@@ -1,0 +1,71 @@
+% Non-internal-wave (NIW) processor
+% V1, A.S.J. Wyatt, 27 Nov 2017
+% V2, A.S.J. Wyatt, 17 Nov 2018
+% V3, A.S.J. Wyatt, 4 Dec 2018
+
+% INPUT:    'Temp' - a bottom-mounted temperature time series sampled at
+%               e.g., 2-min interval
+%           'Time' - sampling time
+%           'x' - local inertial frequency, https://www.mt-oceanography.info/Utilities/coriolis.html
+
+% calls the filter function 'NIW_filter_pl64t.m' based on Alessi, C. A. et al. CODE-2:
+%  Moored Array and Large-Scale Data Report Technical Report No. WHOI-85-35
+% (Woods Hole Oceanographic Institution, 1985).
+
+% clear all
+% close all
+
+%% Data
+
+% Temp= ; % define the temperature data
+% Time= ; % define the time data
+% x= ; % define the local inertial frequency
+% sample_interval = ; % samples per hour in the file, e.g, 30 for 2 min data
+dtind=floor((x*sample_interval)/2); % time interval index
+nsamps=sample_interval*24/2; % number of samples in a day, divided by two for window
+
+%% Processing
+
+LP=NIW_filter_pl64t(Temp, x*sample_interval); % the low pass temperatures
+
+
+HP=Temp-LP; % the high pass temperatures
+
+
+% Calculate rms(HP)
+for j=1:length(LP)
+    if j<dtind+1
+        rmsHP(j)=nanrms(HP(1:j+dtind));
+    elseif j>(length(LP)-dtind)
+        rmsHP(j)=nanrms(HP(j-dtind:end));
+    else
+        rmsHP(j)=nanrms(HP(j-dtind:j+dtind));
+    end
+    % Calculate daily max Temp as limit
+    if j<nsamps+1
+        tmax(j)=nanmax(Temp(1:j+nsamps));
+    elseif j>(length(LP)-nsamps)
+        tmax(j)=nanmax(Temp(j-nsamps:end));
+    else
+        tmax(j)=nanmax(Temp(j-nsamps:j+nsamps));
+    end
+end
+rmsHP=rmsHP'; tmax=tmax';
+
+
+% Limit the NIW estaimte to less than the daily max Temp
+NIWdummy=LP+rmsHP;
+count=0;
+for j=1:length(NIWdummy)
+    if NIWdummy(j)>tmax(j)
+        NIWdummy(j)=tmax(j);
+        count=count+1;
+    end
+end
+disp(['Total of ' num2str(count) ' points in NIW signal above running max set to running max (' num2str(ceil((count/length(NIWdummy))*100)) '%)']);
+
+
+NIW=NIW_filter_pl64t(NIWdummy, x*sample_interval); % final NIW time series
+
+
+
